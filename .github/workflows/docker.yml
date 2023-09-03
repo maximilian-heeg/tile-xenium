@@ -27,4 +27,4 @@ jobs:
             RELEASE_VERSION: ${{ steps.vars.outputs.tag }}
         with:
           push: true
-          tags: maximilianheeg/merge-baysor:${{ steps.vars.outputs.tag }}
+          tags: maximilianheeg/tile-xenium:${{ steps.vars.outputs.tag }}
