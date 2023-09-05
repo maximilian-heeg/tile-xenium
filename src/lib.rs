@@ -10,7 +10,7 @@ use std::io::prelude::*;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// The path to the transcripts.csv file produced
+    /// The path to the transcripts.csv or .parquet file produced
     /// by Xenium.
     in_file: String,
 
@@ -69,18 +69,28 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
     }
 
     println!("Reading file");
-    let mut transcripts: LazyFrame = LazyFrame::scan_parquet(&args.in_file, Default::default())
-        .unwrap()
-        .select([
-            col("transcript_id"),
-            col("cell_id"),
-            col("overlaps_nucleus"),
-            col("feature_name"),
-            col("x_location"),
-            col("y_location"),
-            col("z_location"),
-            col("qv"),
-        ]);
+    let mut transcripts: LazyFrame = if args.in_file.ends_with(".parquet") {
+        LazyFrame::scan_parquet(&args.in_file, Default::default())?
+    } else if args.in_file.ends_with(".csv") {
+        LazyCsvReader::new(&args.in_file)
+            .has_header(true)
+            .finish()?
+    } else {
+        return Err(Box::new(MyError(
+            "Input file should be either CSV or Parquet.".into(),
+        )));
+    };
+
+    transcripts = transcripts.select([
+        col("transcript_id"),
+        col("cell_id"),
+        col("overlaps_nucleus"),
+        col("feature_name"),
+        col("x_location"),
+        col("y_location"),
+        col("z_location"),
+        col("qv"),
+    ]);
 
     // Decode the binary data column
     transcripts = transcripts.with_columns([
@@ -92,7 +102,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
     println!("Remove non-gene features");
     transcripts = filter_transcripts(transcripts);
     let total_transcripts = get_row_count(transcripts.clone());
-    if total_transcripts < args.minimal_transcripts.try_into().unwrap() {
+    if total_transcripts < args.minimal_transcripts.try_into()? {
         return Err(Box::new(MyError(
             "The number of transcripts that remain after excluding \
             the non-gene transcripts is lower than the required minimal \
