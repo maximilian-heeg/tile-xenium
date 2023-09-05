@@ -83,7 +83,10 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
         ]);
 
     // Decode the binary data column
-    transcripts = transcripts.with_columns([col("feature_name").cast(DataType::Utf8)]);
+    transcripts = transcripts.with_columns([
+        col("feature_name").cast(DataType::Utf8),
+        col("cell_id").cast(DataType::Utf8),
+    ]);
 
     // Remove the non-gene features
     println!("Remove non-gene features");
@@ -113,7 +116,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
             .alias("cell_id")]);
     }
     // Decode the 10x cell id into an integer
-    // transcripts = decode_cells(transcripts);
+    transcripts = decode_cells(transcripts);
     let df = transcripts.collect()?;
     println!("{}", df);
 
