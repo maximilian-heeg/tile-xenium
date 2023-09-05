@@ -1,8 +1,8 @@
 use clap::Parser;
 use polars::prelude::*;
 use std::error::Error;
-use std::fs::File;
 use std::fmt;
+use std::fs::File;
 use std::io::prelude::*;
 
 /// Filter transcripts from transcripts.csv based on Q-Score threshold
@@ -57,26 +57,33 @@ impl fmt::Display for MyError {
 impl Error for MyError {}
 
 pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
-
     if args.width <= args.overlap {
         return Err(Box::new(MyError(
-            "The width of a tile cannot be smaller than the overlap."
-                .into(),
+            "The width of a tile cannot be smaller than the overlap.".into(),
         )));
     }
     if args.width <= args.overlap {
         return Err(Box::new(MyError(
-            "The height of a tile cannot be smaller than the overlap."
-                .into(),
+            "The height of a tile cannot be smaller than the overlap.".into(),
         )));
     }
-
 
     println!("Reading file");
-    let mut transcripts: LazyFrame = LazyCsvReader::new(&args.in_file)
-        .has_header(true)
-        .finish()
-        .unwrap();
+    let mut transcripts: LazyFrame = LazyFrame::scan_parquet(&args.in_file, Default::default())
+        .unwrap()
+        .select([
+            col("transcript_id"),
+            col("cell_id"),
+            col("overlaps_nucleus"),
+            col("feature_name"),
+            col("x_location"),
+            col("y_location"),
+            col("z_location"),
+            col("qv"),
+        ]);
+
+    // Decode the binary data column
+    transcripts = transcripts.with_columns([col("feature_name").cast(DataType::Utf8)]);
 
     // Remove the non-gene features
     println!("Remove non-gene features");
@@ -106,8 +113,9 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
             .alias("cell_id")]);
     }
     // Decode the 10x cell id into an integer
-    transcripts = decode_cells(transcripts);
+    // transcripts = decode_cells(transcripts);
     let df = transcripts.collect()?;
+    println!("{}", df);
 
     println!("Get limits");
     let (x_min, x_max, y_min, y_max) = get_limits(&df);
@@ -125,7 +133,9 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
             let start_y = y;
             let end_y = y + args.height;
 
-            println!("... Trying to create tile from X= {start_x} - {end_x} and Y= {start_y} - {end_y}");
+            println!(
+                "... Trying to create tile from X= {start_x} - {end_x} and Y= {start_y} - {end_y}"
+            );
             let file = write_tile(
                 df.clone().lazy(),
                 start_x,
@@ -145,10 +155,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
     }
 
     // Dump parameters
-    let outfile = format!(
-        "{}/params.txt",
-        args.out_dir
-    );
+    let outfile = format!("{}/params.txt", args.out_dir);
     let mut file = File::create(outfile)?;
     write!(file, "{:?}", args)?;
 
@@ -204,17 +211,13 @@ fn write_tile(
 /// values are rounded to the smallest integer number greater than the value for the maximal values
 /// values are rounded to the biggest integer number lower than the value for the minimal values
 fn get_limits(df: &DataFrame) -> (f64, f64, f64, f64) {
-    let x_min: f64 = df
-        .column("x_location").unwrap().min().unwrap();
-      
-    let x_max: f64 = df
-        .column("x_location").unwrap().max().unwrap();
+    let x_min: f64 = df.column("x_location").unwrap().min().unwrap();
 
-    let y_min: f64 = df
-        .column("y_location").unwrap().min().unwrap();
-      
-    let y_max: f64 = df
-        .column("y_location").unwrap().max().unwrap();
+    let x_max: f64 = df.column("x_location").unwrap().max().unwrap();
+
+    let y_min: f64 = df.column("y_location").unwrap().min().unwrap();
+
+    let y_max: f64 = df.column("y_location").unwrap().max().unwrap();
 
     (x_min.floor(), x_max.ceil(), y_min.floor(), y_max.ceil())
 }
