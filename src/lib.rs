@@ -5,8 +5,8 @@ use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 
-/// Filter transcripts from transcripts.csv based on Q-Score threshold
-/// and upper bounds on x and y coordinates. Remove negative controls.
+/// Create tiles, filter transcripts from transcripts.csv based
+/// on Q-Score threshold. Remove negative controls
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
