@@ -281,8 +281,9 @@ fn decode_cells(df: LazyFrame) -> LazyFrame {
 }
 
 fn decode_cell_id(cell_id: &str) -> u32 {
-    if cell_id == "0" {
-        return 0;
+    // Check if id can be converted to integer
+    if let Ok(numeric_id) = cell_id.parse::<u32>() {
+        return numeric_id;
     }
     let mut parts = cell_id.split("-");
     let shifted_hex_digits = parts.next().unwrap();
