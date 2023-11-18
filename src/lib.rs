@@ -39,6 +39,11 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     nucleus_only: bool,
 
+    /// Exclude genes
+    /// If a gene starts with any of these values, it will be removed
+    #[arg(long, default_values_t = ["NegControlProbe_".to_string(), "antisense_".to_string(), "NegControlCodeword_".to_string(), "BLANK_".to_string(), "UnassignedCodeword_".to_string()], num_args = 1.., value_delimiter = ' ')]
+    exclude_genes: Vec<String>,
+
     /// Path for outout file. The output file will be names after the following schema:  
     ///   X{x-min}-{x-max}_Y{y-min}-{y-max}_filtered_transcripts_nucleus_only_{nucleus_only}.csv  
     ///   E.g.: X0-24000_Y0-24000_filtered_transcripts_nucleus_only_false.csv
@@ -92,7 +97,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
         col("qv"),
     ]);
 
-    // Decode the binary data column
+    // Decode the binary data column and filter qv
     transcripts = transcripts.with_columns([
         col("feature_name").cast(DataType::Utf8),
         col("cell_id").cast(DataType::Utf8),
@@ -100,7 +105,7 @@ pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
 
     // Remove the non-gene features
     println!("Remove non-gene features");
-    transcripts = filter_transcripts(transcripts);
+    transcripts = filter_transcripts(transcripts, &args.exclude_genes, args.min_qv);
     let total_transcripts = get_row_count(transcripts.clone());
     if total_transcripts < args.minimal_transcripts.try_into()? {
         return Err(Box::new(MyError(
@@ -247,17 +252,14 @@ fn get_row_count(df: LazyFrame) -> u32 {
         .unwrap()
 }
 /// Exclude control probes from the transcripts table.
-fn filter_transcripts(t: LazyFrame) -> LazyFrame {
-    t.filter(not(col("feature_name")
-        .str()
-        .starts_with(lit("NegControlProbe_"))))
-        .filter(not(col("feature_name")
+fn filter_transcripts(t: LazyFrame, exclude_genes: &Vec<String>, min_qv: f64) -> LazyFrame {
+    let mut t = t;
+    for gene in exclude_genes {
+        t = t.filter(not(col("feature_name")
             .str()
-            .starts_with(lit("antisense_"))))
-        .filter(not(col("feature_name")
-            .str()
-            .starts_with(lit("NegControlCodeword_"))))
-        .filter(not(col("feature_name").str().starts_with(lit("BLANK_"))))
+            .starts_with(lit(gene.clone()))))
+    }
+    t.filter(col("qv").gt_eq(min_qv))
 }
 
 /// Decode the cell_id column
@@ -346,17 +348,56 @@ mod tests {
     }
 
     #[test]
-    fn check_filter_transcripts() {
+    fn check_filter_transcripts_1() {
         let df = df! [
-            "feature_name" => ["NegControlProbe_", "antisense_", "NegControlCodeword_", "BLANK_", "Gene"],
-            "Other_col"         => [false, false, true, false, true]
+            "feature_name" => ["NegControlProbe_", "antisense_", "NegControlCodeword_", "BLANK_", "Gene_low_qv", "Gene_high_qv", "UnassignedCodeword_132"],
+            "Other_col"         => [false, false, true, false, true, true, false],
+            "qv" => [20.0, 25.0, 47.0, 15.0, 14.2, 22.0, 24.0]
         ].unwrap().lazy();
 
-        let result = filter_transcripts(df).collect().unwrap();
+        let exclude_genes: Vec<String> = vec![
+            "NegControlProbe_".to_string(),
+            "antisense_".to_string(),
+            "NegControlCodeword_".to_string(),
+            "BLANK_".to_string(),
+        ];
+        let result = filter_transcripts(df, &exclude_genes, 20.0)
+            .collect()
+            .unwrap();
 
         let solution = df! [
-            "feature_name" => ["Gene"],
-            "Other_col"         => [true]
+            "feature_name" => ["Gene_high_qv", "UnassignedCodeword_132"],
+            "Other_col"         => [true, false],
+            "qv" => [22.0, 24.0]
+        ]
+        .unwrap();
+
+        assert_eq!(result, solution);
+    }
+
+    #[test]
+    fn check_filter_transcripts_2() {
+        let df = df! [
+            "feature_name" => ["NegControlProbe_", "antisense_", "NegControlCodeword_", "BLANK_", "Gene_low_qv", "Gene_high_qv", "UnassignedCodeword_132"],
+            "Other_col"         => [false, false, true, false, true, true, false],
+            "qv" => [20.0, 25.0, 47.0, 15.0, 14.2, 22.0, 24.0]
+        ].unwrap().lazy();
+
+        let exclude_genes: Vec<String> = vec![
+            "NegControlProbe_".to_string(),
+            "antisense_".to_string(),
+            "NegControlCodeword_".to_string(),
+            "BLANK_".to_string(),
+            "UnassignedCodeword_".to_string(),
+        ];
+        let result = filter_transcripts(df, &exclude_genes, 10.0)
+            .collect()
+            .unwrap();
+
+        let solution = df! [
+            "feature_name" => ["Gene_low_qv", "Gene_high_qv"],
+            "Other_col"         => [true, true],
+            "qv" => [14.2, 22.0]
         ]
         .unwrap();
 

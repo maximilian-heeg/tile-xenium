@@ -40,6 +40,9 @@ To preprocess Xenium’s transcript CSV file for Baysor, the script will perform
           --nucleus-only
               Only keep transcripts that are in the nucelus. All other transcripts will
               not be assigned to a cell
+          --exclude-genes [<EXCLUDE_GENES>...]
+              Exclude genes If a gene starts with any of these values, it will be removed
+              [default: NegControlProbe_ antisense_ NegControlCodeword_ BLANK_ UnassignedCodeword_]
           --out-dir <OUT_DIR>
               Path for outout file. The output file will be names after the following schema:  
                 X{x-min}-{x-max}_Y{y-min}-{y-max}_filtered_transcripts_nucleus_only_{nucleus_only}.csv  
